@@ -140,8 +140,8 @@ ui <- fluidPage(theme = shinytheme("slate"),
                                                                         "MCFS" = 'fs.mcfs',
                                                                         "MDFS-1D" = 'fs.mdfs.1D',
                                                                         "MDFS-2D" = 'fs.mdfs.2D',
-                                                                        "ReliefF" = 'fs.relief',
-                                                                        "CBF" = 'fs.cbf'),
+                                                                        "ReliefF" = 'fs.relieff',
+                                                                        "FCBF" = 'fs.fcbf'),
                                                          selected = 'fs.utest'),
                                       
                                       conditionalPanel(
@@ -160,10 +160,10 @@ ui <- fluidPage(theme = shinytheme("slate"),
                                       
                                       
                                       conditionalPanel(
-                                        condition = "input.methods.includes('fs.mrmr')",
+                                        condition = "input.methods.includes('fs.mrmr') || input.methods.includes('fs.relieff')",
                                         numericInput("nvar", label = h4("Number of relevant variables"), value = 110),
-                                        helpText("Note: hyperparameter of MRMR,
-                                         setup no more than the number of all variables")
+                                        #helpText("Note: hyperparameter of MRMR,
+                                        # setup no more than the number of all variables")
                                       ),
                                       
                                       
@@ -174,10 +174,14 @@ ui <- fluidPage(theme = shinytheme("slate"),
                                                                    "permutations" = "permutations",
                                                                    "criticalAngle" = "criticalAngle"), 
                                                     selected = 'kmeans'),
-                                        helpText("Note: hyperparameter of MCFS,
-                                          The methods of finding cut-off value between important and unimportant attributes")
+                                        #helpText("Note: hyperparameter of MCFS,
+                                        #  The methods of finding cut-off value between important and unimportant attributes")
                                       ),
                                       
+                                      conditionalPanel(
+                                        condition = "input.methods.includes('fs.fcbf')",
+                                      sliderInput("suvar", label = h4("Symetrical uncertainty"), min = 0, max = 1, value = 0.25),
+                                      ),
                                       
                                       sliderInput("level.cor", label = h4("Correlation coefficient"), min = 0, max = 1, value = 0.75),
                                       
@@ -215,7 +219,7 @@ ui <- fluidPage(theme = shinytheme("slate"),
                                                  ),
                                                  hr(),
                                                  fluidRow(
-                                                   splitLayout(cellWidths = c("50%", "50%"), plotlyOutput("plot.model.mse"), plotlyOutput(""))
+                                                   splitLayout(cellWidths = c("50%", "50%"), plotlyOutput("plot.model.f1"), plotlyOutput(""))
                                                  ),
                                                  hr(),
                                                  uiOutput('downloadPlot')),
@@ -701,6 +705,7 @@ server <- function(session, input, output){
         params = list(adjust = input$adjust,
                       feature.number = input$nvar,
                       alpha = 0.05,
+                      su = input$suvar,
                       use.cuda = USE.CUDA,
                       cutoff.method = c(input$cutoff))
         asm = c(input$methods)
@@ -844,14 +849,14 @@ server <- function(session, input, output){
             theme(legend.position = "bottom")
         })
 
-        plotly.reult.mse = reactive({
+        plotly.reult.f1 = reactive({
           data = result_model()
           
-          ggplot(data, aes(x= N, y = mean.mse, group= method, color= method)) +
+          ggplot(data, aes(x= N, y = mean.f1, group= method, color= method)) +
             geom_line() +
             geom_point() +  
             scale_x_continuous(breaks= c(seq(0,100, by = 10))) + 
-            labs(title= "Mean Squared Error vs top N features.", y="MSE", x = "N") + 
+            labs(title= "F1 Score vs top N features.", y="F1", x = "N") + 
             theme_light()+
             theme(legend.position = "bottom")
         })
@@ -870,7 +875,7 @@ server <- function(session, input, output){
         
         output$plot.model.mcc <- renderPlotly(plotly.reult.mcc())
 
-        output$plot.model.mse <- renderPlotly(plotly.reult.mse())
+        output$plot.model.f1 <- renderPlotly(plotly.reult.f1())
         
         output$downloadAsm <- renderUI({
           if(!is.null(result_asm())){
@@ -948,7 +953,7 @@ server <- function(session, input, output){
                         print(plotly.reult.acc()), 
                         print(plotly.reult.auc()),
                         print(plotly.reult.mcc(), ncol = 4),
-                        print(plotly.reult.mse()))  
+                        print(plotly.reult.f1()))  
             dev.off()
           })
         
@@ -961,7 +966,7 @@ server <- function(session, input, output){
             setwd(tempdir())
             print(tempdir())
             fs <- c("info.txt","ranking.csv", "stability.csv", "model.csv",
-                    "utest.txt", "mcfs.txt", "mdfs1d.txt", "mdfs2d.txt", "mrmr.txt", "full_result.RData", "result.pdf")
+                    "utest.txt", "mcfs.txt", "mdfs1d.txt", "mdfs2d.txt", "mrmr.txt", "relieff.txt", "fcbf.txt", "full_result.RData", "result.pdf")
             writeLines(deparse(info_app()), "info.txt")
             write.csv(result_ranking(), file = "ranking.csv")
             write.csv(result_asm(), file = "stability.csv")
@@ -971,13 +976,15 @@ server <- function(session, input, output){
             writeLines(deparse(fs.mdfs.1D), "mdfs1d.txt")
             writeLines(deparse(fs.mdfs.2D), "mdfs2d.txt")
             writeLines(deparse(fs.mrmr), "mrmr.txt")
+            writeLines(deparse(fs.relieff), "relieff.txt")
+            writeLines(deparse(fs.fcbf), "fcbf.txt")
             save(res, file = "full_result.RData")
             pdf('result.pdf')
             arrangeGrob(print(plotly.reult.asm()),
                         print(plotly.reult.acc()), 
                         print(plotly.reult.auc()),
                         print(plotly.reult.mcc(), ncol = 4),
-                        print(plotly.reult.mse()))  
+                        print(plotly.reult.f1()))  
             dev.off()
             print (fs)
             zip(zipfile=filename, files=fs)
